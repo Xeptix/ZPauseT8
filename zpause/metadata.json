@@ -1,0 +1,13 @@
+{
+    "name": "ZPause",
+    "data": [
+        {
+            "type": "scriptparsetree",
+            "name": "scripts/shield/zpause.gsc",
+            "path": "zpause.gscc",
+            "hooks": [
+                "scripts/zm_common/load.gsc"
+            ]
+        }
+    ]
+}
