@@ -54,6 +54,7 @@ Or do it by hand — Shield reads a mod folder, so there is only one place it go
 ```
 project-bo4\mods\zpause\metadata.json
 project-bo4\mods\zpause\zpause.gscc
+project-bo4\mods\zpause\zpause_lobby.luac
 ```
 
 Start a zombies match. `project-bo4.log` will say so:
@@ -68,9 +69,10 @@ same editor the other ports have — sections, search, profiles, import and expo
 applies your settings differently, and has to: theirs write new defaults into the installed
 script, and what installs here is compiled — nothing to rewrite. So the names come from
 `zpause.settings`, written from the script on every build, and your values go to
-`project-bo4\saved\server\zpause.json`, which the script reads when it loads. A dvar set in
-the console still wins over the file, the same way it wins over a rewritten default
-elsewhere. Editing takes effect on the next match.
+`project-bo4\saved\server\zpause.json`, which the script reads when it loads, and to the
+lobby menu's file beside it. It opens on what those files already hold, so a change made in
+game is there to see. A dvar set in the console still wins over the file, the same way it
+wins over a rewritten default elsewhere. Editing takes effect on the next match.
 
 ## Usage
 
@@ -82,8 +84,8 @@ out so nobody loses a run to the frame they got their hands back.
 Down on the floor, stance and melee stop registering — so while down the combo becomes
 **use + aim**, which survives it. `zp_button_combo_dead` changes that.
 
-There are no chat commands. Black Ops 4 gives a script no `say` callback to bind to, the
-same as Black Ops III and the two Plutonium ports below T6.
+There are no chat commands. Shield registers no chat function for a script and has no chat
+component at all, so this is the one port without them.
 
 ### Who decides
 
@@ -123,6 +125,41 @@ Three things sit outside all of that:
 - **`zp_host_only` with `zp_host_approve` is just `zp_host_only`.** The first turns the
   request away before there is anything left to approve.
 
+### The settings menu
+
+While the game is paused, the host can change ZPause's settings without the console. Hold
+**fire + melee** to open the menu:
+
+| Button | Does |
+|---|---|
+| aim / fire | move up and down the list |
+| grenade | change the setting |
+| melee | close |
+
+A switch flips, a list moves on to its next choice, and a number steps up through a few
+common values and back round to the lowest — exact values are still the console's. A
+change lands when play resumes, the same as one typed into the console, and is saved as the
+menu closes — see [Where settings are saved](#where-settings-are-saved). The menu closes
+itself when a vote opens, since the host needs the buttons back to vote. `zp_menu 0` turns
+it off.
+
+**Everybody sees it on this game.** Shield's HUD elements belong to the screen rather than
+to one player, so the room watches the host change things; only the host's buttons move
+it. It draws as text in whichever half of the screen the pause banner isn't using.
+
+#### In the lobby
+
+The same settings are in the lobby too. In a zombies lobby, open the custom game setup —
+the page with Shield's difficulty setting — and the host gets a **ZPause Settings** button
+above that list. It opens a page laid out like Shield's own settings: a tab for each part
+of ZPause, the settings under it, and what the setting under the cursor does and what its
+default is beside them. Left and right change a setting. **DEFAULT** leaves it to the
+script's own default — or to the one the installer wrote, if you configured it there — and
+**Reset to Defaults** puts every setting back there at once.
+
+A change made there is saved as you make it, so it is still set the next time the game
+starts, and a match picks it up as it loads.
+
 ## Configuration
 
 Every setting is a dvar, and on this engine each one is **registered** with the console —
@@ -134,6 +171,29 @@ pause is requested, so a change takes effect almost straight away with no map re
 periodic re-read is skipped while paused, because the HUD is built from these when the
 pause starts.
 
+### Where settings are saved
+
+Black Ops 4 keeps no dvar of its own between sessions, so what makes a setting permanent
+here is a file — two, beside each other:
+
+```
+project-bo4\saved\server\zpause.json
+project-bo4\saved\server\zpause_lobby.json
+```
+
+`zpause.json` is the one the script reads as a match loads. The pause menu writes it as
+the menu closes and the installer's config editor writes it whenever you save, so a
+setting changed in either is what the other shows next time. It supplies the **default**
+for each setting, so anything set in the console outranks it while the game is running.
+
+`zpause_lobby.json` is the lobby menu's. The lobby saves each change there as you make it,
+and puts them back as the game starts, ahead of `zpause.json`. The installer writes it
+along with `zpause.json`, so the two always agree after you save there; and closing the
+pause menu after a change clears it, since everything the lobby had set is in
+`zpause.json` by then. Only settings that differ from their default are listed in either,
+which is what keeps a default that changes in a later version applying to everything you
+never touched.
+
 | Dvar | Default | What it does |
 |---|---|---|
 | `zp_button_combo` | `1` | Enable the button combo. |
@@ -144,6 +204,7 @@ pause starts.
 | `zp_allow_short_words` | `0` | **No effect on this engine** — there are no chat commands to widen. |
 | `zp_only_script` | `0` | **No effect on this engine** — Shield loads one mod folder, so there is no second copy to turn off. |
 | `zp_only_mod` | `0` | The same, the other way round. |
+| `zp_menu` | `1` | Let the host change settings from a menu while the game is paused: hold fire and melee to open it. |
 | `zp_host_only` | `0` | Only the host can pause or resume. Everyone else's combo is ignored. On a dedicated server there is no host, so it turns itself off rather than locking everybody out. |
 | `zp_ready_check` | `0` | Resuming waits for the players to say they're back. Not a vote — nobody says no and it can't fail. |
 | `zp_ready_percent` | `100` | How much of the room has to be ready. `100` is everybody. |
@@ -173,6 +234,7 @@ pause starts.
 | `zp_round_pause` | `0` | Hold a pause until the round is over instead of freezing the game mid-horde. Asking again calls it off. |
 | `zp_pause_on_disconnect` | `0` | Pause when somebody drops, so whoever is left isn't overrun while they rejoin. Nothing un-pauses on its own, so `zp_max_pause_time` is the way out if they don't come back. |
 | `zp_godmode` | `1` | Nobody can be hurt while paused. |
+| `zp_freeze_players` | `1` | Lock players in place while paused. `0` lets them walk around with their weapons down, locked again for the countdown — not recommended, because doors, the box, perks, traps and pickups can all still be used while the zombies are held. |
 | `zp_engine_freeze` | `1` | Use `setentitypaused()`, the call stock's own AI freeze is built on. |
 | `zp_drift_guard` | `1` | Snap back any AI that still manages to move. |
 | `zp_freeze_anims` | `1` | **No effect on this engine** — the entity pause already stops animation. |
@@ -191,7 +253,7 @@ pause starts.
 | `zp_blackout_alpha` | `0.2` | How far it dims. `0.2` is a light darkening; `1` is fully black. |
 | `zp_blur` | `1` | Blur the screen while paused. |
 | `zp_blur_amount` | `2` | How much. `1.5` reads as a step back without hiding the game. |
-| `zp_pause_sound` | `zmb_bgb_plainsight_start` | Played to everyone on pause. `""` for silence. |
+| `zp_pause_sound` | `zmb_bgb_plainsight_start` | Played to everyone on pause. `none` for silence. |
 | `zp_countdown_sound` | `zmb_trap_ready` | Played on each countdown tick. |
 | `zp_resume_sound` | `zmb_bgb_plainsight_end` | Played when play resumes. |
 
@@ -217,7 +279,9 @@ the horde the way Black Ops II and III do, not the way Black Ops and World at Wa
 An enforcer runs alongside it, exactly as it does on those two ports: `ignoreall` and a
 pinned goal on a tick, so anything that spawns mid-pause or slips through a spawn already
 in flight is caught rather than left running around a stopped game. `zp_drift_guard` puts
-back anything that moves anyway.
+back anything that moves anyway. A zombie still on its way in through a window keeps its own
+goal instead: its walk ends the moment it is at its goal, and what it plays next is lined up
+against the window, so a goal at its feet would read as arrival.
 
 Two stock flags go with it, both saved and put back on resume rather than cleared.
 `b_ignore_cleanup` keeps the cleanup system from reclaiming a held zombie, and `is_inert`
@@ -295,6 +359,44 @@ for what each engine can actually do.
 
 ## Changelog
 
+### v1.5
+
+- **A zombie paused on its way in through a window picks up where it was.** The pause holds
+  zombies with `setentitypaused()` and, behind it, pins each one's goal to where it stands.
+  A zombie's walk to a window ends the moment it is at its goal, and what it plays next is
+  lined up against the window — so a goal at its feet reads as arrival, and the resume put
+  it onto the window. While the engine freeze holds it, a zombie that isn't through its
+  window yet keeps the goal the game gave it, which is how stock's own `freeze()` holds it.
+
+- **`zp_freeze_players`** — set it to `0` and players can walk around a paused game with
+  their weapons down, and are locked again for the countdown back in. Players are still
+  locked by default, and roaming isn't recommended: doors, the box, perks, traps and
+  pickups can all still be used while the zombies are held.
+
+- **A settings menu for the host.** While the game is paused, hold **fire + melee** to
+  change ZPause's settings without the console: aim and fire move through the list,
+  grenade changes the setting, melee closes it. Everybody sees it on this game. See
+  [The settings menu](#the-settings-menu); `zp_menu` turns it off.
+
+- **The same settings in the lobby.** The zombies custom game setup, where Shield puts its
+  difficulty setting, gets a **ZPause Settings** button for the host, with a tab for each
+  part of ZPause, what each setting does and its default, and Reset to Defaults. See
+  [In the lobby](#in-the-lobby).
+
+- **Settings are kept wherever you change them.** The pause menu saves to
+  `zpause.json` as it closes, the lobby saves as you go, and the installer's config editor
+  opens on what either of them saved. See
+  [Where settings are saved](#where-settings-are-saved).
+
+- **`none` empties a setting from the console.** `set zp_pause_sound ""` was put back to
+  its default the next time the config was read. `none` does it from the console, the
+  config file or the settings menu.
+
+- **The installer's `-To` works when it already remembers a folder.** It was only read when
+  the installer had to ask where the game is, so once it remembered one, `-To` was ignored.
+  It comes first now, for that run, and a `-To` that is not the game's folder says so. On
+  Linux, the question itself now shows when the installer has to ask.
+
 ### v1.4
 
 First release. Feature equal to ZPause v1.4 for Black Ops II, except where the engine
@@ -304,8 +406,8 @@ doesn't allow it:
   `zp_hud_panel_width` all need a shader behind the text, and Black Ops 4 has no scriptable
   HUD to put one in. `zp_blackout` does their job instead, which is why it is on by default
   at `0.2` on every port now — see **Not here yet**.
-- **No chat commands.** Black Ops 4 gives a script no `say` callback to bind to, so
-  everything is on the button combos. `zp_allow_short_words` is carried and does nothing.
+- **No chat commands.** Shield registers no chat function for a script, so everything is
+  on the button combos. `zp_allow_short_words` is carried and does nothing.
 - **`zp_only_script` and `zp_only_mod` do nothing here.** Shield reads one mod folder, so
   there is never a second copy to choose between. Both are carried so one config reads the
   same on every port.

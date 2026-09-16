@@ -1,5 +1,5 @@
 /*
-    ZPAUSE T8 v1.4 -- Black Ops 4 / Project BO4 (Shield)
+    ZPAUSE T8 v1.5 -- Black Ops 4 / Project BO4 (Shield)
 
     A synced co-op pause for Black Ops 4 zombies. Fork of the T7 port; see
     docs/porting-t8.md for the survey behind every decision here.
@@ -168,7 +168,7 @@ function zp_sound_all(alias)
 function zp_build()
 {
     // ZP_BUILD_BEGIN
-    return "ZPause v1.4  09/13/2026 12:02 AM";
+    return "ZPause v1.5  09/16/2026 03:24 PM";
     // ZP_BUILD_END
 }
 
@@ -235,6 +235,10 @@ function zp_build_watermark()
 
         project-bo4/saved/server/zpause.json
 
+    The in-game settings menu writes the same file when it closes, the way
+    the Plutonium ports' menus write theirs, so a change made in either
+    place is what the other finds.
+
     Read once rather than on every config pass: the config is re-read
     every five seconds, and a file is not. Editing it takes effect
     on the next match, which is exactly what rewriting a script does on
@@ -248,22 +252,57 @@ function zp_file_read()
 /*
     What the file says a setting should be, or the built-in default.
 
-    A list of { name, value } rather than one object of pairs, because
-    Shield turns a JSON object into a GSC struct and a struct's fields
-    can only be read by a name written into the script. Written this
-    way, .name and .value are literals and the search is an ordinary
-    loop -- nothing depends on indexing an array by a runtime string.
+    A list rather than one object of pairs, because Shield turns a JSON
+    object into a GSC struct and a struct's fields can only be read by a
+    name written into the script. Written this way the search is an
+    ordinary loop -- nothing depends on indexing an array by a runtime
+    string.
+
+    Two shapes of entry, one from each writer. The installer writes
+    { "name": ..., "value": ... }; the in-game menu writes [ name, value ],
+    because a list of two strings is all ShieldToJson has to turn back
+    into JSON, where a struct would need the names of its fields.
 */
 function zp_file_value(dvar, def)
 {
-    if (!isdefined(level.zp_file))
+    if (!isdefined(level.zp_file) || !isarray(level.zp_file))
     {
         return def;
     }
 
     foreach (entry in level.zp_file)
     {
-        if (!isdefined(entry) || !isdefined(entry.name) || !isdefined(entry.value))
+        if (!isdefined(entry))
+        {
+            continue;
+        }
+
+        if (isarray(entry))
+        {
+            /*
+                ShieldToJson writes a script array as an object --
+                { "$.type": "array", "0": name, "1": value } -- rather than
+                a JSON list, so an index may come back as the number or as
+                the string. Both are asked for.
+            */
+            name = entry[0];
+            value = entry[1];
+
+            if (!isdefined(name))
+            {
+                name = entry["0"];
+                value = entry["1"];
+            }
+
+            if (isdefined(name) && isdefined(value) && name == dvar)
+            {
+                return value;
+            }
+
+            continue;
+        }
+
+        if (!isdefined(entry.name) || !isdefined(entry.value))
         {
             continue;
         }
@@ -277,6 +316,86 @@ function zp_file_value(dvar, def)
     return def;
 }
 
+/*
+    The built-in default of a setting, kept as the config is read.
+
+    Taken here rather than from the generated menu table because this is
+    where it is true: the same call that declares a setting hands it over,
+    before the file gets a say, so the two cannot drift. It also covers
+    the settings the menu has no row for, which a table-driven version
+    would have dropped from the file the first time it saved.
+*/
+function zp_cfg_remember(dvar, def)
+{
+    if (!isdefined(level.zp_def_names))
+    {
+        level.zp_def_names = [];
+        level.zp_def_values = [];
+    }
+
+    level.zp_def_names[level.zp_def_names.size] = dvar;
+    level.zp_def_values[level.zp_def_values.size] = "" + def;
+}
+
+/*
+    Everything that differs from its built-in default, written from the
+    dvars into the file the script, the installer and this menu share.
+
+    Only what differs, for the reason the installer gives: a file that
+    pinned every setting would hold a later version to this one's defaults
+    for the ones nobody ever touched. Written from the dvars rather than
+    the menu's rows, so a setting with no row -- and one changed from the
+    console, or in the lobby -- survives the rewrite. Nothing that differs
+    means no file, the same as the installer.
+
+    Then the lobby menu's own file goes. It holds what was chosen in the
+    lobby, and the lobby puts it back into the dvars as the game starts,
+    ahead of this file -- so a value changed here since would be undone by
+    it on the next start. Everything it held is in the dvars, and so in the
+    file just written.
+*/
+function zp_file_write()
+{
+    if (!isdefined(level.zp_def_names))
+    {
+        return;
+    }
+
+    list = [];
+
+    for (i = 0; i < level.zp_def_names.size; i++)
+    {
+        name = level.zp_def_names[i];
+        value = getdvar(name, "");
+
+        if (value == "" || value == level.zp_def_values[i])
+        {
+            continue;
+        }
+
+        pair = [];
+        pair[0] = name;
+        pair[1] = value;
+        list[list.size] = pair;
+    }
+
+    if (list.size > 0)
+    {
+        ShieldToJson("zpause", list);
+    }
+    else if (isdefined(ShieldFromJson("zpause")))
+    {
+        ShieldRemoveJson("zpause");
+    }
+
+    level.zp_file = list;
+
+    if (isdefined(ShieldFromJson("zpause_lobby")))
+    {
+        ShieldRemoveJson("zpause_lobby");
+    }
+}
+
 function zp_cfg_register(dvar, def)
 {
     ShieldRegisterDVarName(dvar, "");
@@ -288,28 +407,46 @@ function zp_cfg_register(dvar, def)
     }
 }
 
+// The file's value can be a string -- the in-game menu writes every value as
+// one -- so the fallback handed to the engine is converted first.
 function zp_cfg_int(dvar, def)
 {
+    zp_cfg_remember(dvar, def);
     def = zp_file_value(dvar, def);
     zp_cfg_register(dvar, "" + def);
 
-    return getdvarint(dvar, def);
+    return getdvarint(dvar, int(def));
 }
 
 function zp_cfg_float(dvar, def)
 {
+    zp_cfg_remember(dvar, def);
     def = zp_file_value(dvar, def);
     zp_cfg_register(dvar, "" + def);
 
-    return getdvarfloat(dvar, def);
+    return getdvarfloat(dvar, float(def));
 }
 
+/*
+    "none" is how a string setting is emptied in game. An empty dvar reads
+    as one that was never set and gets the default written straight back,
+    so "" typed into the console lasted until the next read, and the
+    settings menu has no other way to write nothing.
+*/
 function zp_cfg_str(dvar, def)
 {
+    zp_cfg_remember(dvar, def);
     def = zp_file_value(dvar, def);
     zp_cfg_register(dvar, def);
 
-    return getdvar(dvar, def);
+    value = getdvar(dvar, def);
+
+    if (value == "none")
+    {
+        return "";
+    }
+
+    return value;
 }
 
 function zp_load_config()
@@ -325,11 +462,16 @@ function zp_load_config()
         level.zp = spawnstruct();
     }
 
+    // Built-in defaults, gathered again as the settings below are read,
+    // so zp_file_write() can leave out everything still at one.
+    level.zp_def_names = [];
+    level.zp_def_values = [];
+
     // --- input -----------------------------------------------------
     /*
         Hold crouch + melee together to toggle the pause. Chat commands are
-        not here: Black Ops 4 gives a script no say callback to bind to,
-        the same as Black Ops 3 and the two Plutonium forks below T6.
+        not here, and this is the only port without them: Shield registers
+        no chat function for a script and has no chat component at all.
     */
     level.zp.button_combo = zp_cfg_int("zp_button_combo", 1);
     level.zp.button_hold_time = zp_cfg_float("zp_button_hold_time", 0.3);
@@ -347,7 +489,8 @@ function zp_load_config()
     level.zp.button_combo_dead = zp_cfg_str("zp_button_combo_dead", "use_ads");
 
     // Carried so one config file reads the same on all five ports. There
-    // are no chat commands on this engine to widen, the same as T7.
+    // are no chat commands on this engine to widen; the other four have
+    // them.
     level.zp.allow_short_words = zp_cfg_int("zp_allow_short_words", 0);
 
     // Also carried rather than used: Shield loads one mod folder, so
@@ -366,6 +509,12 @@ function zp_load_config()
         itself off rather than locking everybody out.
     */
     level.zp.host_only = zp_cfg_int("zp_host_only", 0);
+
+    /*
+        The host's settings menu, opened while paused by holding fire and
+        melee. See zp_menu_watcher().
+    */
+    level.zp.menu = zp_cfg_int("zp_menu", 1);
 
     /*
         Resuming waits for the room to say it is back.
@@ -444,6 +593,7 @@ function zp_load_config()
 
     // --- what gets frozen ------------------------------------------
     level.zp.godmode = zp_cfg_int("zp_godmode", 1);
+    level.zp.freeze_players = zp_cfg_int("zp_freeze_players", 1);
 
     /*
         Everything the pause did to a player, re-applied on a tick.
@@ -655,6 +805,7 @@ function zp_do_pause(player)
     // 3. The players.
     zp_ease_in();
 
+    level.zp_counting_down = undefined;
     zp_freeze_players();
 
     if (level.zp.control_guard)
@@ -718,6 +869,18 @@ function zp_do_unpause(player)
         -- and zp_busy is already set, so nothing can be toggled part way
         through it.
     */
+    // Anyone who was roaming is locked for the countdown, so the game
+    // comes back from where everybody stands. See zp_hold_controls.
+    level.zp_counting_down = 1;
+
+    foreach (player in level.players)
+    {
+        if (isdefined(player))
+        {
+            player zp_hold_controls();
+        }
+    }
+
     if (level.zp.countdown > 0 && zp_true(level.zp_hud_up))
     {
         // The clock and the byline go first, and the closing line moves
@@ -871,7 +1034,7 @@ function zp_freeze_players()
             continue;
         }
 
-        player val::set(#"zpause", "freezecontrols", 1);
+        player zp_hold_controls();
         player val::set(#"zpause", "ignoreme", 1);
 
         if (level.zp.godmode)
@@ -972,7 +1135,7 @@ function zp_player_enforcer()
                 continue;
             }
 
-            player val::set(#"zpause", "freezecontrols", 1);
+            player zp_hold_controls();
             player val::set(#"zpause", "ignoreme", 1);
 
             if (level.zp.godmode)
@@ -981,6 +1144,28 @@ function zp_player_enforcer()
             }
         }
     }
+}
+
+/*
+    What the pause does to a player's controls. Locked in place -- unless
+    zp_freeze_players is off, and then they keep moving and looking and
+    only their weapons go down, so nobody fights a held zombie. Everybody
+    is locked again for the countdown, so the game comes back from where
+    they all stand.
+
+    Both go through val::, tagged #"zpause", so switching to roaming
+    resets only the lock this set and nobody else's.
+*/
+function zp_hold_controls()
+{
+    if (level.zp.freeze_players || zp_true(level.zp_counting_down) || zp_true(self.zp_menu_open))
+    {
+        self val::set(#"zpause", "freezecontrols", 1);
+        return;
+    }
+
+    self val::reset(#"zpause", "freezecontrols");
+    self val::set(#"zpause", "disable_weapons", 1);
 }
 
 function zp_thaw_players()
@@ -993,6 +1178,7 @@ function zp_thaw_players()
         }
 
         player val::reset(#"zpause", "freezecontrols");
+        player val::reset(#"zpause", "disable_weapons");
         player val::reset(#"zpause", "ignoreme");
         player val::reset(#"zpause", "takedamage");
 
@@ -1142,7 +1328,11 @@ function zp_ai_enforcer()
             }
 
             ai val::set(#"zpause", "ignoreall", 1);
-            ai setgoal(ai.zp_anchor);
+
+            if (!zp_keeps_goal(ai))
+            {
+                ai setgoal(ai.zp_anchor);
+            }
 
             // Cheap, and it catches a line that started between ticks.
             if (level.zp.silence_zombies)
@@ -1157,6 +1347,36 @@ function zp_ai_enforcer()
             }
         }
     }
+}
+
+/*
+    Does this zombie keep its own goal through the pause?
+
+    The goal pinned above is a second hold behind setentitypaused(), and at
+    a window it does harm. A zombie on its way in is run by the behaviour
+    tree in zm_behavior.gsc: its walk to the attack spot ends the moment it
+    is at its goal, zombiemovetoattackspotactionterminate() sets
+    at_entrance_tear_spot on the way out whatever the reason, and what the
+    tree plays next is aligned to the window. A goal at the zombie's own
+    feet reads as arrival, so the resume would put it onto the window from
+    wherever it had been walking.
+
+    Stock's own freeze() holds an AI with the same setentitypaused() and
+    sets no goal. So while the engine freeze is what holds it, a zombie
+    that is not through its window yet keeps the goal stock gave it.
+    first_node is set on the way to a window and
+    completed_emerging_into_playable_area once through it, both by stock;
+    anything else is pinned as before. With zp_engine_freeze off the pin is
+    the only hold there is, and it stays.
+*/
+function zp_keeps_goal(ai)
+{
+    if (!level.zp.engine_freeze)
+    {
+        return false;
+    }
+
+    return isdefined(ai.first_node) && !zp_true(ai.completed_emerging_into_playable_area);
 }
 
 /*
@@ -1769,8 +1989,9 @@ function zp_clock_updater()
     names, the same default and the same fallback while down -- so a
     config written for T6 means the same thing here.
 
-    No chat commands: Black Ops 4 gives a script no say callback to bind
-    to, the same as Black Ops 3 and the two Plutonium forks below T6.
+    No chat commands, and this is the only port without them: Shield
+    registers no chat function for a script and has no chat component at
+    all. Every other engine raises a "say" notify a script can wait on.
    ================================================================== */
 
 function zp_on_connect()
@@ -1779,6 +2000,7 @@ function zp_on_connect()
     self thread zp_disconnect_watcher();
     self thread zp_input_debug();
     self thread zp_vote_no_watcher();
+    self thread zp_menu_watcher();
 }
 
 function zp_on_spawned()
@@ -1854,7 +2076,7 @@ function zp_player_think()
         // Late joiner, or a respawn into a pause that is already running.
         if (zp_true(level.zp_paused))
         {
-            self val::set(#"zpause", "freezecontrols", 1);
+            self zp_hold_controls();
         }
 
         if (level.zp.show_hint)
@@ -2034,22 +2256,28 @@ function zp_button_watcher()
             continue;
         }
 
+        // The host's menu reads these buttons while it is open.
+        if (zp_true(self.zp_menu_open))
+        {
+            continue;
+        }
+
         combo = self zp_active_combo();
 
-        if (combo == "" || !(self zp_combo_pressed(combo)))
+        if (combo == "" || !(self zp_combo_pressed(combo)) || self zp_menu_combo_held())
         {
             continue;
         }
 
         held = 0;
 
-        while (self zp_combo_pressed(combo) && held < level.zp.button_hold_time)
+        while (self zp_combo_pressed(combo) && !(self zp_menu_combo_held()) && held < level.zp.button_hold_time)
         {
             wait(0.05);
             held = held + 0.05;
         }
 
-        if (held < level.zp.button_hold_time)
+        if (held < level.zp.button_hold_time || self zp_menu_combo_held())
         {
             continue;
         }
@@ -2462,6 +2690,581 @@ function zp_vote_stop()
 
 
 /* ==================================================================
+    SETTINGS MENU
+
+    The host changes settings while the game is paused, without a console.
+    Only while paused, and not while a vote is open -- the host needs these
+    buttons back to vote. The host is held in place while it is open, so
+    none of them does anything in the game at the same time.
+
+    Hold fire + melee to open it. Aim and fire move through the list,
+    grenade changes the setting, melee closes it. The same buttons, rules
+    and rows as every other port; see the T6 script for why these buttons.
+
+    Everybody sees it here. Shield's HUD elements belong to the screen, not
+    to a player -- nothing gives one player an element of their own -- so
+    the room watches the host change things. Only the host's buttons move
+    it. Text only, since there is no shader to put behind it, and in the
+    half of the screen the pause block is not using. The pause block itself
+    is never touched: the countdown reads zp_hud_up to decide whether to
+    count at all, and a resume can start while this is open.
+
+    A change is a setdvar(), the same as typing it into the console, and
+    it lands the same way: when play resumes.
+   ================================================================== */
+
+function zp_menu_watcher()
+{
+    self endon(#"disconnect");
+    level endon(#"end_game");
+
+    for (;;)
+    {
+        wait(0.05);
+
+        if (zp_true(self.zp_menu_open) || !zp_menu_allowed() || !zp_player_is_host(self))
+        {
+            continue;
+        }
+
+        if (!(self attackbuttonpressed() && self meleebuttonpressed()))
+        {
+            continue;
+        }
+
+        held = 0;
+
+        while (self attackbuttonpressed() && self meleebuttonpressed() && held < level.zp.button_hold_time)
+        {
+            wait(0.05);
+            held = held + 0.05;
+        }
+
+        if (held < level.zp.button_hold_time || !zp_menu_allowed())
+        {
+            continue;
+        }
+
+        self zp_menu_run();
+    }
+}
+
+function zp_menu_allowed()
+{
+    if (!level.zp.menu || !zp_true(level.zp_paused) || zp_true(level.zp_busy))
+    {
+        return false;
+    }
+
+    return !zp_true(level.zp_vote_active);
+}
+
+/*
+    Fire + melee, held by the host where the menu could open. The pause
+    combo gives way to it, the same as on every port -- on T5 and T4 the
+    default combo reads the stance rather than a button, and a crouched host
+    opening the menu would resume the game at the same time.
+*/
+function zp_menu_combo_held()
+{
+    if (!zp_menu_allowed() || !zp_player_is_host(self))
+    {
+        return false;
+    }
+
+    return self attackbuttonpressed() && self meleebuttonpressed();
+}
+
+function zp_menu_run()
+{
+    zp_menu_table();
+
+    // One set of elements for the whole screen.
+    if (level.zp_menu_names.size == 0 || zp_true(level.zp_menu_drawn))
+    {
+        return;
+    }
+
+    self.zp_menu_open = 1;
+
+    // Nothing happens until the buttons that opened it are let go.
+    self.zp_menu_last = "held";
+
+    // Roaming or not, the host stands still while it is open.
+    self zp_hold_controls();
+
+    if (!isdefined(self.zp_menu_row) || self.zp_menu_row >= level.zp_menu_names.size)
+    {
+        self.zp_menu_row = 0;
+    }
+
+    self.zp_menu_top = undefined;
+    zp_menu_draw_create();
+    self zp_menu_draw();
+
+    for (;;)
+    {
+        wait(0.05);
+
+        if (!zp_menu_allowed())
+        {
+            break;
+        }
+
+        input = self zp_menu_input();
+
+        if (input == "close")
+        {
+            break;
+        }
+
+        if (input == "up")
+        {
+            self zp_menu_move(-1);
+        }
+        else if (input == "down")
+        {
+            self zp_menu_move(1);
+        }
+        else if (input == "change")
+        {
+            self zp_menu_change();
+            self.zp_menu_dirty = 1;
+        }
+    }
+
+    zp_menu_draw_destroy();
+
+    // Saved once, as it closes, and only if something changed.
+    if (zp_true(self.zp_menu_dirty))
+    {
+        self.zp_menu_dirty = undefined;
+        zp_file_write();
+    }
+
+    // Melee is half of the default combo: everything the menu reads is let
+    // go before the combos are read again.
+    while (self zp_menu_button() != "")
+    {
+        wait(0.05);
+    }
+
+    self.zp_menu_open = undefined;
+
+    // Back to however the pause holds everybody, if it still does.
+    if (zp_true(level.zp_paused) && !zp_true(level.zp_busy))
+    {
+        self zp_hold_controls();
+    }
+}
+
+/*
+    One action per press. Moving repeats while the button is held, so a
+    long list can be run through without tapping; changing and closing
+    never repeat.
+*/
+function zp_menu_input()
+{
+    b = self zp_menu_button();
+
+    if (b == "")
+    {
+        self.zp_menu_last = "";
+        return "";
+    }
+
+    if (self.zp_menu_last == "held")
+    {
+        return "";
+    }
+
+    now = gettime();
+
+    if (self.zp_menu_last != b)
+    {
+        self.zp_menu_last = b;
+        self.zp_menu_repeat = now + 400;
+        return b;
+    }
+
+    if (b != "up" && b != "down")
+    {
+        return "";
+    }
+
+    if (now < self.zp_menu_repeat)
+    {
+        return "";
+    }
+
+    self.zp_menu_repeat = now + 120;
+    return b;
+}
+
+function zp_menu_button()
+{
+    if (self meleebuttonpressed())
+    {
+        return "close";
+    }
+
+    if (self fragbuttonpressed())
+    {
+        return "change";
+    }
+
+    if (self adsbuttonpressed())
+    {
+        return "up";
+    }
+
+    if (self attackbuttonpressed())
+    {
+        return "down";
+    }
+
+    return "";
+}
+
+function zp_menu_move(dir)
+{
+    n = level.zp_menu_names.size;
+    self.zp_menu_row = self.zp_menu_row + dir;
+
+    if (self.zp_menu_row < 0)
+    {
+        self.zp_menu_row = n - 1;
+    }
+
+    if (self.zp_menu_row >= n)
+    {
+        self.zp_menu_row = 0;
+    }
+
+    self zp_menu_draw();
+}
+
+/*
+    Forwards, and round again. A number goes to the next value up from
+    wherever it is now, so one set by hand to something in between still
+    moves the right way.
+*/
+function zp_menu_change()
+{
+    i = self.zp_menu_row;
+    name = level.zp_menu_names[i];
+    kind = level.zp_menu_kinds[i];
+
+    if (kind == "flag")
+    {
+        value = "1";
+
+        if (getdvarint(name, 0) != 0)
+        {
+            value = "0";
+        }
+    }
+    else if (kind == "choice")
+    {
+        list = strtok(level.zp_menu_values[i], "|");
+        current = zp_menu_word(getdvar(name, ""));
+        value = list[0];
+
+        for (c = 0; c < list.size - 1; c++)
+        {
+            if (list[c] == current)
+            {
+                value = list[c + 1];
+            }
+        }
+    }
+    else
+    {
+        // Literals in the table, not text to parse: the menu is the same on
+        // every port, and World at War has no float().
+        current = getdvarfloat(name, 0);
+        first = level.zp_menu_firsts[i];
+        value = level.zp_menu_nums[first];
+
+        for (c = first + level.zp_menu_counts[i] - 1; c >= first; c--)
+        {
+            if (level.zp_menu_nums[c] > current + 0.001)
+            {
+                value = level.zp_menu_nums[c];
+            }
+        }
+
+        value = "" + value;
+    }
+
+    setdvar(name, value);
+    self zp_menu_draw();
+}
+
+// Nothing is "none", which zp_cfg_str() reads back as nothing.
+function zp_menu_word(value)
+{
+    if (value == "")
+    {
+        return "none";
+    }
+
+    return value;
+}
+
+/*
+    In the half of the screen the pause block is not in. The block's own
+    places are zp_hud_place()'s: top and center hang from the top edge,
+    left and right sit at the sides, middle and bottom take the lower half.
+*/
+function zp_menu_draw_create()
+{
+    zp_menu_draw_destroy();
+
+    ay = 1;
+    y = -40;
+
+    if (level.zp.hud_position == "middle" || level.zp.hud_position == "bottom")
+    {
+        ay = 0;
+        y = 110;
+    }
+
+    level.zp_menu_drawn = 1;
+
+    ShieldRegisterHudElem("zp_menu_title", "ZPAUSE SETTINGS", zp_gold(), 0, y, 1, ay, 1, 1, 0.9);
+    ShieldRegisterHudElem("zp_menu_section", "", zp_dim(), 0, y + 46, 1, ay, 1, 1, 0.6);
+
+    for (j = 0; j < 7; j++)
+    {
+        ShieldRegisterHudElem("zp_menu_name" + j, "", zp_grey(), -560, y + 96 + j * 40, 1, ay, 0, 1, 0.62);
+        ShieldRegisterHudElem("zp_menu_value" + j, "", zp_grey(), 560, y + 96 + j * 40, 1, ay, 2, 1, 0.62);
+    }
+
+    // What the setting under the cursor does, in the README's own words --
+    // the menu table carries the line, cut to one line's width.
+    ShieldRegisterHudElem("zp_menu_desc", "", zp_dim(), 0, y + 96 + 7 * 40 + 12, 1, ay, 1, 1, 0.5);
+
+    ShieldRegisterHudElem("zp_menu_hint", "aim / fire  move     grenade  change     melee  close",
+                          zp_dim(), 0, y + 96 + 7 * 40 + 52, 1, ay, 1, 1, 0.55);
+}
+
+function zp_menu_draw()
+{
+    if (!zp_true(level.zp_menu_drawn))
+    {
+        return;
+    }
+
+    n = level.zp_menu_names.size;
+    row = self.zp_menu_row;
+
+    // Keep the chosen row on screen.
+    if (!isdefined(self.zp_menu_top))
+    {
+        self.zp_menu_top = 0;
+    }
+
+    if (row < self.zp_menu_top)
+    {
+        self.zp_menu_top = row;
+    }
+
+    if (row > self.zp_menu_top + 6)
+    {
+        self.zp_menu_top = row - 6;
+    }
+
+    ShieldHudElemSetText("zp_menu_section", level.zp_menu_sections[row]);
+    ShieldHudElemSetText("zp_menu_desc", level.zp_menu_descs[row]);
+
+    for (j = 0; j < 7; j++)
+    {
+        i = self.zp_menu_top + j;
+
+        if (i >= n)
+        {
+            ShieldHudElemSetText("zp_menu_name" + j, "");
+            ShieldHudElemSetText("zp_menu_value" + j, "");
+            continue;
+        }
+
+        colour = zp_grey();
+
+        if (i == row)
+        {
+            colour = zp_gold();
+        }
+
+        ShieldHudElemSetColor("zp_menu_name" + j, colour);
+        ShieldHudElemSetColor("zp_menu_value" + j, colour);
+        ShieldHudElemSetText("zp_menu_name" + j, level.zp_menu_names[i]);
+        ShieldHudElemSetText("zp_menu_value" + j, zp_menu_value_text(i));
+    }
+}
+
+function zp_menu_value_text(i)
+{
+    name = level.zp_menu_names[i];
+    kind = level.zp_menu_kinds[i];
+
+    if (kind == "flag")
+    {
+        if (getdvarint(name, 0) != 0)
+        {
+            return "on";
+        }
+
+        return "off";
+    }
+
+    if (kind == "choice")
+    {
+        return zp_menu_word(getdvar(name, ""));
+    }
+
+    return getdvar(name, "");
+}
+
+function zp_menu_draw_destroy()
+{
+    if (!zp_true(level.zp_menu_drawn))
+    {
+        return;
+    }
+
+    level.zp_menu_drawn = undefined;
+
+    ShieldRemoveHudElem("zp_menu_title");
+    ShieldRemoveHudElem("zp_menu_section");
+    ShieldRemoveHudElem("zp_menu_desc");
+    ShieldRemoveHudElem("zp_menu_hint");
+
+    for (j = 0; j < 7; j++)
+    {
+        ShieldRemoveHudElem("zp_menu_name" + j);
+        ShieldRemoveHudElem("zp_menu_value" + j);
+    }
+}
+
+// ZP_MENU_BEGIN
+/*
+    Generated by tools/mk_menu_table.py from this script's zp_cfg calls.
+    Never edit by hand. One row per setting the host's menu offers: how
+    it changes -- flag, number or choice -- and what it steps through.
+*/
+function zp_menu_table()
+{
+    if (isdefined(level.zp_menu_names))
+    {
+        return;
+    }
+
+    level.zp_menu_names = [];
+    level.zp_menu_kinds = [];
+    level.zp_menu_values = [];
+    level.zp_menu_sections = [];
+    level.zp_menu_descs = [];
+    level.zp_menu_firsts = [];
+    level.zp_menu_counts = [];
+    level.zp_menu_nums = [];
+
+    zp_menu_row("zp_button_combo", "flag", "", "input", "Enable the button combo.");
+    zp_menu_row("zp_button_hold_time", "number", "", "input", "How long the combo must be held.");
+    zp_menu_num(0.1); zp_menu_num(0.2); zp_menu_num(0.3); zp_menu_num(0.5); zp_menu_num(0.75); zp_menu_num(1); zp_menu_num(1.5); zp_menu_num(2);
+    zp_menu_row("zp_combo", "choice", "crouch_melee|crouch_use|crouch_frag|crouch_ads|use_frag|use_ads|use_attack|attack_ads|frag_only|jump_melee", "input", "Which two buttons: crouch_melee, crouch_use, crouch_frag, crouch_ads, use_frag, use_ads, use_attack...");
+    zp_menu_row("zp_button_combo_dead", "choice", "use_ads|crouch_use|crouch_frag|crouch_ads|crouch_melee|use_frag|frag_only|use_attack|attack_ads", "input", "The combo used while down, when stance and melee stop registering.");
+    zp_menu_row("zp_allow_short_words", "flag", "", "input", "No effect on this engine - there are no chat commands to widen.");
+    zp_menu_row("zp_input_debug", "flag", "", "input", "Print each player which buttons the server receives from them, for picking the two above.");
+    zp_menu_row("zp_host_only", "flag", "", "who decides", "Only the host can pause or resume. Everyone else's combo is ignored. On a dedicated server there is no host...");
+    zp_menu_row("zp_ready_check", "flag", "", "who decides", "Resuming waits for the players to say they're back. Not a vote - nobody says no and it can't fail.");
+    zp_menu_row("zp_ready_percent", "number", "", "who decides", "How much of the room has to be ready. 100 is everybody.");
+    zp_menu_num(25); zp_menu_num(50); zp_menu_num(75); zp_menu_num(100);
+    zp_menu_row("zp_host_approve", "flag", "", "who decides", "The host pauses at once; anyone else has to ask and the host answers yes or no. It runs as a vote only the...");
+    zp_menu_row("zp_vote", "flag", "", "voting", "Put pauses to a vote.");
+    zp_menu_row("zp_vote_min", "number", "", "voting", "Minimum yes votes, whatever the player count.");
+    zp_menu_num(1); zp_menu_num(2); zp_menu_num(3); zp_menu_num(4); zp_menu_num(6); zp_menu_num(8);
+    zp_menu_row("zp_vote_percent", "number", "", "voting", "Percent of players who must vote yes.");
+    zp_menu_num(25); zp_menu_num(34); zp_menu_num(50); zp_menu_num(51); zp_menu_num(67); zp_menu_num(75); zp_menu_num(100);
+    zp_menu_row("zp_vote_time", "number", "", "voting", "Seconds a vote stays open.");
+    zp_menu_num(10); zp_menu_num(15); zp_menu_num(20); zp_menu_num(30); zp_menu_num(45); zp_menu_num(60); zp_menu_num(90); zp_menu_num(120);
+    zp_menu_row("zp_vote_unpause", "flag", "", "voting", "Resuming needs a vote too.");
+    zp_menu_row("zp_vote_hold", "flag", "", "voting", "Freeze the game while the vote runs, and resume it if the vote fails.");
+    zp_menu_row("zp_vote_initiator_yes", "flag", "", "voting", "Whoever called the vote counts as a yes.");
+    zp_menu_row("zp_vote_lockout", "number", "", "voting", "Seconds before another vote can be called after one fails.");
+    zp_menu_num(0); zp_menu_num(5); zp_menu_num(10); zp_menu_num(20); zp_menu_num(30); zp_menu_num(60); zp_menu_num(120);
+    zp_menu_row("zp_vote_hud", "flag", "", "voting", "Show the vote tally on screen.");
+    zp_menu_row("zp_vote_show_voters", "flag", "", "voting", "List each player and how they voted.");
+    zp_menu_row("zp_vote_hud_position", "choice", "top|bottom|middle|left|right", "voting", "Where the vote tally sits. Same slots as zp_hud_position.");
+    zp_menu_row("zp_vote_alive_only", "flag", "", "voting", "Leave bled-out spectators out of the threshold and the count.");
+    zp_menu_row("zp_vote_result_time", "number", "", "voting", "Seconds the result stands on the tally after a vote resolves. 0 = clear at once.");
+    zp_menu_num(0); zp_menu_num(1); zp_menu_num(2); zp_menu_num(3); zp_menu_num(5); zp_menu_num(10);
+    zp_menu_row("zp_vote_no_combo", "choice", "jump_melee|crouch_use|crouch_frag|crouch_ads|crouch_melee|use_frag|frag_only|use_ads|use_attack|attack_ads", "voting", "Combo for a no vote. Same list as zp_combo.");
+    zp_menu_row("zp_vote_no_combo_dead", "choice", "use_attack|crouch_use|crouch_frag|crouch_ads|crouch_melee|use_frag|frag_only|use_ads|attack_ads", "voting", "The same, for a no vote while down.");
+    zp_menu_row("zp_countdown", "number", "", "timing", "Seconds counted down before the game starts again. 0 resumes at once.");
+    zp_menu_num(0); zp_menu_num(1); zp_menu_num(2); zp_menu_num(3); zp_menu_num(5); zp_menu_num(10);
+    zp_menu_row("zp_grace", "number", "", "timing", "Seconds of invulnerability after resuming.");
+    zp_menu_num(0); zp_menu_num(1); zp_menu_num(2); zp_menu_num(3); zp_menu_num(5); zp_menu_num(10);
+    zp_menu_row("zp_cooldown", "number", "", "timing", "Seconds before the pause can be toggled again.");
+    zp_menu_num(0); zp_menu_num(1); zp_menu_num(2); zp_menu_num(3); zp_menu_num(5); zp_menu_num(10); zp_menu_num(30);
+    zp_menu_row("zp_max_pause_time", "number", "", "timing", "Resume automatically after this many seconds. 0 is no limit.");
+    zp_menu_num(0); zp_menu_num(60); zp_menu_num(120); zp_menu_num(300); zp_menu_num(600); zp_menu_num(900); zp_menu_num(1800); zp_menu_num(3600);
+    zp_menu_row("zp_max_pauses", "number", "", "timing", "How many times one match can be paused. 0 is no cap.");
+    zp_menu_num(0); zp_menu_num(1); zp_menu_num(2); zp_menu_num(3); zp_menu_num(5); zp_menu_num(10); zp_menu_num(20);
+    zp_menu_row("zp_ease", "flag", "", "timing", "Ease time down into the pause and back out, instead of cutting to a stop.");
+    zp_menu_row("zp_ease_time", "number", "", "timing", "Seconds of ramp at each end.");
+    zp_menu_num(0); zp_menu_num(0.1); zp_menu_num(0.2); zp_menu_num(0.35); zp_menu_num(0.5); zp_menu_num(0.75); zp_menu_num(1);
+    zp_menu_row("zp_round_pause", "flag", "", "timing", "Hold a pause until the round is over instead of freezing the game mid-horde. Asking again calls it off.");
+    zp_menu_row("zp_pause_on_disconnect", "flag", "", "timing", "Pause when somebody drops, so whoever is left isn't overrun while they rejoin. Nothing un-pauses on its own...");
+    zp_menu_row("zp_godmode", "flag", "", "what gets frozen", "Nobody can be hurt while paused.");
+    zp_menu_row("zp_freeze_players", "flag", "", "what gets frozen", "Lock players in place while paused. 0 lets them walk around with their weapons down, locked again for the...");
+    zp_menu_row("zp_control_guard", "flag", "", "what gets frozen", "Re-apply the freeze on a tick, in case another script releases somebody mid-pause.");
+    zp_menu_row("zp_freeze_clock", "flag", "", "what gets frozen", "Hold the match timer.");
+    zp_menu_row("zp_freeze_powerups", "flag", "", "what gets frozen", "Stop ground powerups timing out.");
+    zp_menu_row("zp_freeze_effects", "flag", "", "what gets frozen", "Hold insta-kill / double-points countdowns.");
+    zp_menu_row("zp_freeze_bleedout", "flag", "", "what gets frozen", "Stop downed players bleeding out.");
+    zp_menu_row("zp_engine_freeze", "flag", "", "what gets frozen", "Use setentitypaused(), the call stock's own AI freeze is built on.");
+    zp_menu_row("zp_drift_guard", "flag", "", "what gets frozen", "Snap back any AI that still manages to move.");
+    zp_menu_row("zp_freeze_anims", "flag", "", "what gets frozen", "No effect on this engine - the entity pause already stops animation.");
+    zp_menu_row("zp_silence_zombies", "flag", "", "what gets frozen", "Stop zombies growling while paused.");
+    zp_menu_row("zp_hud", "flag", "", "presentation", "Draw the pause block at all.");
+    zp_menu_row("zp_hud_position", "choice", "center|top|middle|bottom|left|right", "presentation", "Where it sits: center, top, middle, bottom, left or right.");
+    zp_menu_row("zp_hud_timer", "flag", "", "presentation", "Show how long the pause has run.");
+    zp_menu_row("zp_show_hint", "flag", "", "presentation", "Tell players how to pause when they spawn.");
+    zp_menu_row("zp_hud_binds", "flag", "", "presentation", "Show the combo as key names rather than plain words. Applies to the spawn hint; the pause block always uses...");
+    zp_menu_row("zp_blackout", "flag", "", "presentation", "Dim everyone's screen while paused, which keeps the pause text readable over a bright skybox. Raise...");
+    zp_menu_row("zp_blackout_alpha", "number", "", "presentation", "How far it dims. 0.2 is a light darkening; 1 is fully black.");
+    zp_menu_num(0.1); zp_menu_num(0.2); zp_menu_num(0.35); zp_menu_num(0.5); zp_menu_num(0.65); zp_menu_num(0.8); zp_menu_num(1);
+    zp_menu_row("zp_blur", "flag", "", "presentation", "Blur the screen while paused.");
+    zp_menu_row("zp_blur_amount", "number", "", "presentation", "How much. 1.5 reads as a step back without hiding the game.");
+    zp_menu_num(0.5); zp_menu_num(1); zp_menu_num(1.5); zp_menu_num(2); zp_menu_num(3); zp_menu_num(4); zp_menu_num(6);
+    zp_menu_row("zp_pause_sound", "choice", "zmb_bgb_plainsight_start|none", "presentation", "Played to everyone on pause. none for silence.");
+}
+
+function zp_menu_row(name, kind, values, section, desc)
+{
+    i = level.zp_menu_names.size;
+
+    level.zp_menu_names[i] = name;
+    level.zp_menu_kinds[i] = kind;
+    level.zp_menu_values[i] = values;
+    level.zp_menu_sections[i] = section;
+    level.zp_menu_descs[i] = desc;
+    level.zp_menu_firsts[i] = level.zp_menu_nums.size;
+    level.zp_menu_counts[i] = 0;
+}
+
+// One of the values the row just added steps through.
+function zp_menu_num(value)
+{
+    i = level.zp_menu_names.size - 1;
+
+    level.zp_menu_nums[level.zp_menu_nums.size] = value;
+    level.zp_menu_counts[i] = level.zp_menu_counts[i] + 1;
+}
+// ZP_MENU_END
+
+/* ==================================================================
     THE VOTE HUD
 
     Its own elements rather than the pause block's, because the two can be
@@ -2647,6 +3450,11 @@ function zp_vote_no_watcher()
         wait(0.05);
 
         if (!zp_true(level.zp_vote_active) || !level.zp.button_combo)
+        {
+            continue;
+        }
+
+        if (zp_true(self.zp_menu_open))
         {
             continue;
         }

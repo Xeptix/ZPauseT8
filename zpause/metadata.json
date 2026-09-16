@@ -8,6 +8,59 @@
             "hooks": [
                 "scripts/zm_common/load.gsc"
             ]
+        },
+        {
+            "type": "luafile",
+            "name": "ui/zpause/zpause_lobby",
+            "path": "zpause_lobby.luac",
+            "hooks_post": [
+                "x64:4ed0bcba9d999e0f"
+            ]
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_input",
+            "value": "INPUT"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_who_decides",
+            "value": "WHO DECIDES"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_voting",
+            "value": "VOTING"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_timing",
+            "value": "TIMING"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_what_gets_frozen",
+            "value": "WHAT GETS FROZEN"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_presentation",
+            "value": "PRESENTATION"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_reset_title",
+            "value": "Reset to Defaults"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_no",
+            "value": "NO"
+        },
+        {
+            "type": "localizeentry",
+            "name": "zpause/lobby_yes",
+            "value": "YES"
         }
     ]
 }

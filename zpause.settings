@@ -9,6 +9,7 @@ zp_only_script|int|0|input|No effect on this engine — Shield loads one mod fol
 zp_only_mod|int|0|input|The same, the other way round.
 zp_input_debug|int|0|input|Print each player which buttons the server receives from them, for picking the two above.
 zp_host_only|int|0|who decides|Only the host can pause or resume. Everyone else's combo is ignored. On a dedicated server there is no host, so it turns itself off rather than locking everybody out.
+zp_menu|int|1|who decides|Let the host change settings from a menu while the game is paused: hold fire and melee to open it.
 zp_ready_check|int|0|who decides|Resuming waits for the players to say they're back. Not a vote — nobody says no and it can't fail.
 zp_ready_percent|int|100|who decides|How much of the room has to be ready. 100 is everybody.
 zp_host_approve|int|0|who decides|The host pauses at once; anyone else has to ask and the host answers yes or no. It runs as a vote only the host can cast, so the yes/no input, the HUD and the timeout are a vote's. Pausing only — resuming still follows zp_vote. zp_host_only wins where both are set.
@@ -37,6 +38,7 @@ zp_ease_time|float|0.35|timing|Seconds of ramp at each end.
 zp_round_pause|int|0|timing|Hold a pause until the round is over instead of freezing the game mid-horde. Asking again calls it off.
 zp_pause_on_disconnect|int|0|timing|Pause when somebody drops, so whoever is left isn't overrun while they rejoin. Nothing un-pauses on its own, so zp_max_pause_time is the way out if they don't come back.
 zp_godmode|int|1|what gets frozen|Nobody can be hurt while paused.
+zp_freeze_players|int|1|what gets frozen|Lock players in place while paused. 0 lets them walk around with their weapons down, locked again for the countdown — not recommended, because doors, the box, perks, traps and pickups can all still be used while the zombies are held.
 zp_control_guard|int|1|what gets frozen|Re-apply the freeze on a tick, in case another script releases somebody mid-pause.
 zp_freeze_clock|int|1|what gets frozen|Hold the match timer.
 zp_freeze_powerups|int|1|what gets frozen|Stop ground powerups timing out.
@@ -55,6 +57,6 @@ zp_blackout|int|1|presentation|Dim everyone's screen while paused, which keeps t
 zp_blackout_alpha|float|0.2|presentation|How far it dims. 0.2 is a light darkening; 1 is fully black.
 zp_blur|int|1|presentation|Blur the screen while paused.
 zp_blur_amount|float|2|presentation|How much. 1.5 reads as a step back without hiding the game.
-zp_pause_sound|str|zmb_bgb_plainsight_start|presentation|Played to everyone on pause. "" for silence.
+zp_pause_sound|str|zmb_bgb_plainsight_start|presentation|Played to everyone on pause. none for silence.
 zp_countdown_sound|str|zmb_trap_ready|presentation|Played on each countdown tick.
 zp_resume_sound|str|zmb_bgb_plainsight_end|presentation|Played when play resumes.
