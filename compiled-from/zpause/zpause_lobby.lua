@@ -103,6 +103,14 @@ local PAGES = {
 				labels = { "OFF", "ON" }
 			},
 			{
+				dvar = "zp_personal_pause",
+				kind = "flag",
+				default = "0",
+				hint = "The pause input pauses only you, and the game carries on for everyone else; it pauses in full once nobody is left playing. See Pausing just yourself. Default: OFF.",
+				values = { "0", "1" },
+				labels = { "OFF", "ON" }
+			},
+			{
 				dvar = "zp_ready_check",
 				kind = "flag",
 				default = "0",
@@ -217,8 +225,8 @@ local PAGES = {
 				kind = "choice",
 				default = "top",
 				hint = "Where the vote tally sits. Same slots as zp_hud_position. Default: TOP.",
-				values = { "top", "bottom", "middle", "left", "right" },
-				labels = { "TOP", "BOTTOM", "MIDDLE", "LEFT", "RIGHT" }
+				values = { "top", "bottom", "middle", "left", "right", "center" },
+				labels = { "TOP", "BOTTOM", "MIDDLE", "LEFT", "RIGHT", "CENTER" }
 			},
 			{
 				dvar = "zp_vote_alive_only",
