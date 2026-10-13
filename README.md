@@ -12,7 +12,9 @@ Part of the ZPause family - the same mod exists for
 [World at War](https://github.com/Xeptix/ZPauseT4). Same settings, same names, same
 defaults, so one config carries across all five.
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F6L1285ROA)
+[![Support the mod on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F6L1285ROA)
+[![Support the mod on Patreon](https://img.shields.io/badge/Patreon-Xeptix-F96854?logo=patreon&logoColor=white)](https://www.patreon.com/Xeptix)
+[![Join the Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/RE85HRwYZZ)
 
 > **This is the newest port.** It carries 58 of the other ports' 62 settings and shares
 > their version number. The four it does not have are `zp_hud_glow`, `zp_hud_panel`,
@@ -357,9 +359,7 @@ is not a dead end: the file loads against the Zombies/Hud hook, a `UIImage` pain
 rectangle at real pixel co-ordinates, and Shield's text draws **over** it rather than under.
 What stopped it is the last link - a `luinotifyevent` from the script never reaches a
 handler registered on the LUI root, so the script cannot tell the panel when to appear.
-`docs/porting-t8.md` has the whole of what was learned, for anyone who wants to finish it.
-
-See `docs/porting-t8.md` in the project tree for the survey behind all of it.
+What was learned getting that far is written down, for anyone who wants to finish it.
 
 ## Not here yet
 
@@ -391,6 +391,13 @@ for what each engine can actually do.
 ---
 
 ## Changelog
+
+### v1.7
+
+- **No change on this port.** 1.7 translates the settings menus on Black Ops II and Black Ops
+  III. Black Ops 4's lobby menu stays in English: the shared translation core it uses ships for
+  those two engines only. The version moves with the others so the same number means the same
+  release everywhere.
 
 ### v1.6
 

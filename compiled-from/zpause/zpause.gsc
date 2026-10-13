@@ -1,8 +1,7 @@
 /*
-    ZPAUSE T8 v1.6 -- Black Ops 4 / Project BO4 (Shield)
+    ZPAUSE T8 v1.7 -- Black Ops 4 / Project BO4 (Shield)
 
-    A synced co-op pause for Black Ops 4 zombies. Fork of the T7 port; see
-    docs/porting-t8.md for the survey behind every decision here.
+    A synced co-op pause for Black Ops 4 zombies. Fork of the T7 port.
 
     Three things are genuinely different from T7 and everything else falls
     out of the same design:
@@ -331,7 +330,7 @@ function zp_api_request(player, what)
 function zp_version()
 {
     // ZP_VERSION_BEGIN
-    return "1.6";
+    return "1.7";
     // ZP_VERSION_END
 }
 
@@ -345,7 +344,7 @@ function zp_version()
 function zp_build()
 {
     // ZP_BUILD_BEGIN
-    return "ZPause v1.6  10/07/2026 01:29 AM";
+    return "";
     // ZP_BUILD_END
 }
 
@@ -962,8 +961,7 @@ function zp_config_watcher()
 /* ==================================================================
     THE PAUSE
 
-    Four holds, and only the last of them is in doubt. See
-    docs/porting-t8.md.
+    Four holds, and only the last of them is in doubt.
    ================================================================== */
 
 function zp_do_pause(player, name)
